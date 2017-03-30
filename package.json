@@ -18,6 +18,7 @@
   "homepage": "https://github.com/richardkiene/triton-top#readme",
   "dependencies": {
     "assert-plus": "^1.0.0",
+    "cli-color": "^1.2.0",
     "clui": "^0.3.1",
     "dashdash": "^1.14.1",
     "restify-clients": "^1.5.0",

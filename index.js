@@ -1,6 +1,6 @@
 var mod_assert = require('assert-plus');
+var mod_clc = require('cli-color');
 var mod_clui = require('clui');
-
 var mod_dashdash = require('dashdash');
 var mod_fs = require('fs');
 var mod_restify = require('restify-clients');
@@ -84,25 +84,97 @@ if (opts.help) {
             },
             function showStuff(arg, next) {
                 var zkeys = Object.keys(targets);
+                var gauge = mod_clui.Gauge;
+                var line = mod_clui.Line;
+
+                var mem_used = 0;
+                var mem_limit = 0;
+                var swap_used = 0;
+                var swap_limit = 0;
+                var zfs_used = 0;
+                var zfs_avail = 0;
+
                 for (var z = 0; z < zkeys.length; z++) {
                     var key = zkeys[z];
-                    var alias = targets[key].vm_alias;
-                    /* memory gauge */
-                    var gauge = mod_clui.Gauge;
-                    var mu_raw = targets[key].cur_metrics['mem_agg_usage'].value;
-                    var ml_raw = targets[key].cur_metrics['mem_limit'].value;
-                    var mem_used = ((mu_raw / 1000) / 1000);
-                    var mem_limit = ((ml_raw / 1000) / 1000);
-                    var mem_danger = mem_limit * 0.8;
-                    var mem_human = mem_used + ' MB';
-                    var mem_gauge = gauge(
-                        mem_used,
-                        mem_limit,
-                        20,
-                        mem_danger,
-                        mem_human);
-                    console.log(alias + ' ' + mem_gauge);
+                    var cur_metrics = targets[key].cur_metrics;
+
+                    /* Total Memory Calculation */
+                    var mu_inst = cur_metrics['mem_agg_usage'].value;
+                    var ml_inst = cur_metrics['mem_limit'].value;
+                    mem_used += (((mu_inst / 1000) / 1000) / 1000);
+                    mem_limit += (((ml_inst / 1000) / 1000) / 1000);
+
+                    /* Total Swap Calculation */
+                    var su_inst = cur_metrics['mem_swap'].value;
+                    var sl_inst = cur_metrics['mem_swap_limit'].value;
+                    swap_used += (((su_inst / 1000) / 1000) / 1000);
+                    swap_limit += (((sl_inst / 1000) / 1000) / 1000);
+                    
+                    /* Total Swap Calculation */
+                    var zu_inst = cur_metrics['zfs_used'].value;
+                    var za_inst = cur_metrics['zfs_available'].value;
+                    zfs_used += (((zu_inst / 1000) / 1000) / 1000);
+                    zfs_avail += (((za_inst / 1000) / 1000) / 1000);
+
+                    //var alias = targets[key].vm_alias;
                 }
+
+                var GB = ' GB';
+
+                /* Memory Totals Output */
+                var mem_danger = mem_limit * 0.8;
+                var mem_lim_human = mem_limit.toFixed(2) + GB
+                var mem_human = mem_used.toFixed(2) + ' / ' + mem_lim_human;
+                var mem_gauge = gauge(
+                    mem_used,
+                    mem_limit,
+                    20,
+                    mem_danger,
+                    mem_human);
+
+                var mem_line = new line();
+                mem_line.padding(2);
+                mem_line.column('Total Memory Use', 20, [mod_clc.cyan]);
+                mem_line.column(mem_gauge);
+                mem_line.fill();
+                mem_line.output();
+
+                /* Swap Totals Output */
+                var swap_danger = swap_limit * 0.8;
+                var swap_lim_human = swap_limit.toFixed(2) + GB;
+                var swap_human = swap_used.toFixed(2) + ' / ' + swap_lim_human;
+                var swap_gauge = gauge(
+                    swap_used,
+                    swap_limit,
+                    20,
+                    swap_danger,
+                    swap_human);
+
+                var swap_line = new line();
+                swap_line.padding(2);
+                swap_line.column('Total Swap Use', 20, [mod_clc.cyan]);
+                swap_line.column(swap_gauge);
+                swap_line.fill();
+                swap_line.output();
+
+                /* Swap Totals Output */
+                var zfs_limit = (zfs_used + zfs_avail).toFixed(2);
+                var zfs_lim_human = zfs_limit + GB;
+                var zfs_danger = zfs_limit * 0.8;
+                var zfs_human = zfs_used.toFixed(2) + ' / ' + zfs_lim_human;
+                var zfs_gauge = gauge(
+                    zfs_used,
+                    zfs_limit,
+                    20,
+                    zfs_danger,
+                    zfs_human);
+
+                var zfs_line = new line();
+                zfs_line.padding(2);
+                zfs_line.column('Total ZFS use', 20, [mod_clc.cyan]);
+                zfs_line.column(zfs_gauge);
+                zfs_line.fill();
+                zfs_line.output();
 
                 next();
             }
