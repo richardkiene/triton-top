@@ -1,0 +1,29 @@
+{
+  "name": "triton-top",
+  "version": "1.0.0",
+  "description": "Toy app for showing triton metrics for your zones like top does processes",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/richardkiene/triton-top.git"
+  },
+  "author": "Richard Kiene <richard.kiene@gmail.com>",
+  "license": "MPL-2.0",
+  "bugs": {
+    "url": "https://github.com/richardkiene/triton-top/issues"
+  },
+  "homepage": "https://github.com/richardkiene/triton-top#readme",
+  "dependencies": {
+    "assert-plus": "^1.0.0",
+    "cli-color": "^1.2.0",
+    "clui": "^0.3.1",
+    "dashdash": "^1.14.1",
+    "extsprintf": "^1.3.0",
+    "jsprim": "^1.4.0",
+    "restify-clients": "^1.5.0",
+    "vasync": "^1.6.4"
+  }
+}
