@@ -1,5 +1,6 @@
-
 var mod_assert = require('assert-plus');
+var mod_clui = require('clui');
+
 var mod_dashdash = require('dashdash');
 var mod_fs = require('fs');
 var mod_restify = require('restify-clients');
@@ -73,7 +74,6 @@ if (opts.help) {
                     key: mod_fs.readFileSync(opts.key)
                 });
 
-
                 next();
             },
             function initialRefresh(arg, next) {
@@ -81,6 +81,30 @@ if (opts.help) {
             },
             function initialMetrics(arg, next) {
                 fetchAllMetrics(next);
+            },
+            function showStuff(arg, next) {
+                var zkeys = Object.keys(targets);
+                for (var z = 0; z < zkeys.length; z++) {
+                    var key = zkeys[z];
+                    var alias = targets[key].vm_alias;
+                    /* memory gauge */
+                    var gauge = mod_clui.Gauge;
+                    var mu_raw = targets[key].cur_metrics['mem_agg_usage'].value;
+                    var ml_raw = targets[key].cur_metrics['mem_limit'].value;
+                    var mem_used = ((mu_raw / 1000) / 1000);
+                    var mem_limit = ((ml_raw / 1000) / 1000);
+                    var mem_danger = mem_limit * 0.8;
+                    var mem_human = mem_used + ' MB';
+                    var mem_gauge = gauge(
+                        mem_used,
+                        mem_limit,
+                        20,
+                        mem_danger,
+                        mem_human);
+                    console.log(alias + ' ' + mem_gauge);
+                }
+
+                next();
             }
         ]
     }, function _p(p_err, result) {
@@ -119,9 +143,18 @@ function fetchAllMetrics(cb) {
                 key: mod_fs.readFileSync(opts.key)
             });
 
+            if (!targets[key].last_metrics) {
+                targets[key].cur_metrics = {};
+                targets[key].last_metrics = {};
+            } else {
+                targets[key].last_metrics = targets[key].cur_metrics;
+                targets[key].cur_metrics = {};
+            }
+
             str_client.get(METRICS, function(err, req, res, data) {
                 mod_assert.ifError(err);
                 chunked = data.trim().split('\n');
+
                 var i = 0;
                 while(i < chunked.length) {
                     var help = chunked[i++];
@@ -130,7 +163,7 @@ function fetchAllMetrics(cb) {
                     var name = valstr[0];
                     var value = valstr[1];
 
-                    targets[key].metrics = {
+                    targets[key].cur_metrics[name] = {
                         help: help,
                         type: type,
                         name: name,
