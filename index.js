@@ -125,6 +125,7 @@ function draw() {
     var zfs_used = 0;
     var zfs_avail = 0;
     var net_in_mb_per_sec = 0;
+    var cpu_pct = 0;
 
     var zone_stats = [];
 
@@ -173,6 +174,15 @@ function draw() {
         var za_inst = stats.zfs_av;
         zfs_used += (((zu_inst / 1000) / 1000) / 1000);
         zfs_avail += (((za_inst / 1000) / 1000) / 1000);
+
+
+        var cpu_usr_ttl = parseInt(stats.cpu_usr);
+        var cpu_usr_old_ttl = parseInt(stats.cpu_usr_old);
+        var cpu_usr_inc_ttl = (cpu_usr_ttl - cpu_usr_old_ttl);
+        var cpu_sys_ttl = parseInt(stats.cpu_sys);
+        var cpu_sys_old_ttl = parseInt(stats.cpu_sys_old);
+        var cpu_sys_inc_ttl = (cpu_sys_ttl - cpu_sys_old_ttl);
+        cpu_pct += ((cpu_sys_inc_ttl + cpu_usr_inc_ttl) / 10000000000) * 100;
 
         /* Ingress Network Bytes */
         var netb_in = parseInt(stats.netb_in);
@@ -239,6 +249,21 @@ function draw() {
     zfs_line.column(zfs_gauge);
     zfs_line.fill();
     zfs_line.output();
+
+    /* CPU % Totals Output */
+    var cpu_gauge = gauge(
+        cpu_pct,
+        400,
+        20,
+        400 * 0.8,
+        cpu_pct.toFixed(0) + ' %');
+
+    var cpu_line = new line();
+    cpu_line.padding(2);
+    cpu_line.column('Total CPU %', 20, [mod_clc.cyan]);
+    cpu_line.column(cpu_gauge);
+    cpu_line.fill();
+    cpu_line.output();
 
     blank_line.output();
 
