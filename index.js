@@ -142,8 +142,16 @@ function draw() {
             zfs_use: cur_metrics['zfs_used'].value,
             zfs_av: cur_metrics['zfs_available'].value,
             netb_in: cur_metrics['net_agg_bytes_in'].value,
-            netb_in_old: last_metrics && last_metrics['net_agg_bytes_in'] ? last_metrics['net_agg_bytes_in'].value : 0,
-            netb_out: cur_metrics['net_agg_bytes_out'].value
+            netb_in_old: last_metrics['net_agg_bytes_in'] ?
+                last_metrics['net_agg_bytes_in'].value : 0,
+            netb_out: cur_metrics['net_agg_bytes_out'].value,
+            cpu_usr: cur_metrics['cpu_user_usage'].value,
+            cpu_usr_old: last_metrics['cpu_user_usage'] ?
+                last_metrics['cpu_user_usage'].value : 0,
+            cpu_sys: cur_metrics['cpu_sys_usage'].value,
+            cpu_sys_old: last_metrics['cpu_sys_usage'] ?
+                last_metrics['cpu_sys_usage'].value : 0,
+            load_avg: cur_metrics['load_average'].value
         };
 
         zone_stats.push(stats);
@@ -247,10 +255,12 @@ function draw() {
 
     var zone_col_names = new line();
     zone_col_names.padding(2);
-    zone_col_names.column('Zone Name', 20, [mod_clc.cyan]);
-    zone_col_names.column('Memory in MB', 20, [mod_clc.cyan]);
-    zone_col_names.column('Swap in MB', 20, [mod_clc.cyan]);
-    zone_col_names.column('ZFS in GB', 20, [mod_clc.cyan]);
+    zone_col_names.column('Zone Name', 15, [mod_clc.cyan]);
+    zone_col_names.column('Memory in MB', 15, [mod_clc.cyan]);
+    zone_col_names.column('Swap in MB', 15, [mod_clc.cyan]);
+    zone_col_names.column('ZFS in GB', 15, [mod_clc.cyan]);
+    zone_col_names.column('Load Avg', 15, [mod_clc.cyan]);
+    zone_col_names.column('CPU %', 15, [mod_clc.cyan]);
     zone_col_names.fill();
     zone_col_names.output();
 
@@ -258,37 +268,52 @@ function draw() {
         var stats = zone_stats[l];
         var zone_line = new line();
         zone_line.padding(2);
-        zone_line.column(stats.alias, 20, [mod_clc.white]);
+        zone_line.column(stats.alias, 15, [mod_clc.white]);
 
         /* Mem usage */
         var mem_use = stats.mem_use;
         var mem_use_human = (((mem_use / 1000) / 1000));
-        var mem_use_human = mem_use_human.toFixed(1);
+        var mem_use_human = mem_use_human.toFixed(0);
         var mem_lim = stats.mem_lim;
         var mem_lim_human = (((mem_lim / 1000) / 1000));
-        var mem_lim_human = mem_lim_human.toFixed(1);
+        var mem_lim_human = mem_lim_human.toFixed(0);
         var mem_col = mem_use_human + ' / ' + mem_lim_human;
-        zone_line.column(mem_col, 20, [mod_clc.white]);
+        zone_line.column(mem_col, 15, [mod_clc.white]);
 
         /* Swap usage */
         var swp_use = stats.swp_use;
         var swp_use_human = (((swp_use / 1000) / 1000));
-        var swp_use_human = swp_use_human.toFixed(1);
+        var swp_use_human = swp_use_human.toFixed(0);
         var swp_lim = stats.swp_lim;
         var swp_lim_human = (((swp_lim / 1000) / 1000));
-        var swp_lim_human = swp_lim_human.toFixed(1);
+        var swp_lim_human = swp_lim_human.toFixed(0);
         var swp_col = swp_use_human + ' / ' + swp_lim_human;
-        zone_line.column(swp_col, 20, [mod_clc.white]);
+        zone_line.column(swp_col, 15, [mod_clc.white]);
 
         /* ZFS usage */
         var zfs_use = stats.zfs_use;
         var zfs_use_human = ((zfs_use / 1000) / 1000) / 1000;
-        var zfs_use_human = zfs_use_human.toFixed(1);
+        var zfs_use_human = zfs_use_human.toFixed(0);
         var zfs_lim = parseInt(stats.zfs_av) + parseInt(zfs_use);
         var zfs_lim_human = ((zfs_lim / 1000) / 1000) / 1000;
-        var zfs_lim_human = zfs_lim_human.toFixed(1);
+        var zfs_lim_human = zfs_lim_human.toFixed(0);
         var zfs_col = zfs_use_human + ' / ' + zfs_lim_human;
-        zone_line.column(zfs_col, 20, [mod_clc.white]);
+        zone_line.column(zfs_col, 15, [mod_clc.white]);
+
+        /* Load Average */
+        var load_avg_col = parseFloat(stats.load_avg);
+        zone_line.column(load_avg_col.toFixed(2), 15, [mod_clc.white]);
+
+        var cpu_usr = parseInt(stats.cpu_usr);
+        var cpu_usr_old = parseInt(stats.cpu_usr_old);
+        var cpu_usr_inc = (cpu_usr - cpu_usr_old);
+        var cpu_sys = parseInt(stats.cpu_sys);
+        var cpu_sys_old = parseInt(stats.cpu_sys_old);
+        var cpu_sys_inc = (cpu_sys - cpu_sys_old);
+        var cpu_pct_col = ((cpu_sys_inc + cpu_usr_inc) / 10000000000) * 100;
+        zone_line.column(cpu_pct_col.toFixed(2), 15, [mod_clc.white]);
+
+        /* draw the zone line */
         zone_line.fill();
         zone_line.output();
     }
@@ -332,10 +357,11 @@ function fetchAllMetrics(cb) {
             });
 
             if (!targets[key].cur_metrics) {
-                targets[key].cur_metrics = {};
+                targets[key].last_metrics = {};
                 targets[key].cur_metrics = {};
             } else {
-                targets[key].last_metrics = mod_jsprim.deepCopy(targets[key].cur_metrics);
+                var current = targets[key].cur_metrics;
+                targets[key].last_metrics = mod_jsprim.deepCopy(current);
                 targets[key].cur_metrics = {};
             }
 
