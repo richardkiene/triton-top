@@ -45,6 +45,11 @@ var options = [
     }
 ];
 
+var egressNet =
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+var ingressNet =
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+
 var draw_timeout, opts, json_client;
 var parser = mod_dashdash.createParser({ options: options});
 var targets = {};
@@ -105,8 +110,13 @@ function draw() {
     console.log(mod_clc.reset);
 
     var zkeys = Object.keys(targets);
-    var gauge = mod_clui.Gauge;
+    /*var gauge = mod_clui.Gauge;
     var line = mod_clui.Line;
+    var spark = mod_clui.SparkLine;*/
+
+    var line          = mod_clui.Line,
+        gauge         = mod_clui.Gauge;
+        spark         = mod_clui.Sparkline;
 
     var mem_used = 0;
     var mem_limit = 0;
@@ -114,6 +124,7 @@ function draw() {
     var swap_limit = 0;
     var zfs_used = 0;
     var zfs_avail = 0;
+    var net_in_mb_per_sec = 0;
 
     var zone_stats = [];
 
@@ -129,7 +140,10 @@ function draw() {
             swp_use: cur_metrics['mem_swap'].value,
             swp_lim: cur_metrics['mem_swap_limit'].value,
             zfs_use: cur_metrics['zfs_used'].value,
-            zfs_av: cur_metrics['zfs_available'].value
+            zfs_av: cur_metrics['zfs_available'].value,
+            netb_in: cur_metrics['net_agg_bytes_in'].value,
+            netb_in_old: last_metrics && last_metrics['net_agg_bytes_in'] ? last_metrics['net_agg_bytes_in'].value : 0,
+            netb_out: cur_metrics['net_agg_bytes_out'].value
         };
 
         zone_stats.push(stats);
@@ -151,6 +165,13 @@ function draw() {
         var za_inst = stats.zfs_av;
         zfs_used += (((zu_inst / 1000) / 1000) / 1000);
         zfs_avail += (((za_inst / 1000) / 1000) / 1000);
+
+        /* Ingress Network Bytes */
+        var netb_in = parseInt(stats.netb_in);
+        var netb_in_old = parseInt(stats.netb_in_old);
+        var net_in_diff = netb_in - netb_in_old;
+        var net_in_mb = ((net_in_diff / 1000) / 1000);
+        net_in_mb_per_sec += (net_in_mb / 10);
     }
 
     var GB = ' GB';
@@ -206,16 +227,27 @@ function draw() {
 
     var zfs_line = new line();
     zfs_line.padding(2);
-    zfs_line.column('Total ZFS use', 20, [mod_clc.cyan]);
+    zfs_line.column('Total ZFS Use', 20, [mod_clc.cyan]);
     zfs_line.column(zfs_gauge);
     zfs_line.fill();
     zfs_line.output();
 
     blank_line.output();
 
+    ingressNet.push(net_in_mb_per_sec.toFixed(2));
+    ingressNet.shift();
+    var netb_in_line = new line();
+    netb_in_line.padding(2);
+    netb_in_line.column('MBps', 20, [mod_clc.cyan]);
+    netb_in_line.column(spark(ingressNet, ' MBps'), 80);
+    netb_in_line.fill();
+    netb_in_line.output();
+
+    blank_line.output();
+
     var zone_col_names = new line();
     zone_col_names.padding(2);
-    zone_col_names.column('Name', 20, [mod_clc.cyan]);
+    zone_col_names.column('Zone Name', 20, [mod_clc.cyan]);
     zone_col_names.column('Memory in MB', 20, [mod_clc.cyan]);
     zone_col_names.column('Swap in MB', 20, [mod_clc.cyan]);
     zone_col_names.column('ZFS in GB', 20, [mod_clc.cyan]);
@@ -269,7 +301,16 @@ function refreshTargets(cb) {
         mod_vasync.forEachPipeline({
             'inputs': target_array,
             'func': function (target, next) {
-                targets[target.vm_uuid] = target;
+                var uuid = target.vm_uuid;
+                if (targets && targets[uuid]) {
+                    var temp_cur_mets = targets[uuid].cur_metrics;
+                    var temp_last_mets = targets[uuid].last_metrics;
+                    targets[uuid] = target;
+                    targets[uuid].cur_metrics = temp_cur_mets;
+                    targets[uuid].last_metrics = temp_last_mets;
+                } else {
+                    targets[target.vm_uuid] = target;
+                }
                 next();
             }
         }, function (err, result) {
@@ -290,9 +331,9 @@ function fetchAllMetrics(cb) {
                 key: mod_fs.readFileSync(opts.key)
             });
 
-            if (!targets[key].last_metrics) {
+            if (!targets[key].cur_metrics) {
                 targets[key].cur_metrics = {};
-                targets[key].last_metrics = {};
+                targets[key].cur_metrics = {};
             } else {
                 targets[key].last_metrics = mod_jsprim.deepCopy(targets[key].cur_metrics);
                 targets[key].cur_metrics = {};
