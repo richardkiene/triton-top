@@ -3,6 +3,7 @@ var mod_clc = require('cli-color');
 var mod_clui = require('clui');
 var mod_dashdash = require('dashdash');
 var mod_fs = require('fs');
+var mod_jsprim = require('jsprim');
 var mod_restify = require('restify-clients');
 var mod_vasync = require('vasync');
 
@@ -64,6 +65,12 @@ try {
 if (opts.help) {
     _showHelp();
 } else if (opts.endpoint && opts.cert && opts.key) {
+    paint();
+} else {
+    _showHelp();
+}
+
+function paint() {
     mod_vasync.pipeline({
         'funcs': [
             function createClients(arg, next) {
@@ -90,8 +97,8 @@ if (opts.help) {
     }, function _p(p_err, result) {
         mod_assert.ifError(p_err);
     });
-} else {
-    _showHelp();
+
+    setTimeout(paint, 11000);
 }
 
 function draw() {
@@ -246,8 +253,6 @@ function draw() {
         var zfs_use_human = ((zfs_use / 1000) / 1000) / 1000;
         var zfs_use_human = zfs_use_human.toFixed(1);
         var zfs_lim = parseInt(stats.zfs_av) + parseInt(zfs_use);
-        //console.error('zfs_av: ', stats.zfs_av);
-        //console.error('zfs_lim: ', zfs_lim);
         var zfs_lim_human = ((zfs_lim / 1000) / 1000) / 1000;
         var zfs_lim_human = zfs_lim_human.toFixed(1);
         var zfs_col = zfs_use_human + ' / ' + zfs_lim_human;
@@ -255,15 +260,12 @@ function draw() {
         zone_line.fill();
         zone_line.output();
     }
-
-    draw_timeout = setTimeout(draw, 1000);
 }
 
 function refreshTargets(cb) {
     json_client.get(DISCO, function(err, req, res, obj) {
         mod_assert.ifError(err);
         var target_array = obj.containers;
-
         mod_vasync.forEachPipeline({
             'inputs': target_array,
             'func': function (target, next) {
@@ -292,7 +294,7 @@ function fetchAllMetrics(cb) {
                 targets[key].cur_metrics = {};
                 targets[key].last_metrics = {};
             } else {
-                targets[key].last_metrics = targets[key].cur_metrics;
+                targets[key].last_metrics = mod_jsprim.deepCopy(targets[key].cur_metrics);
                 targets[key].cur_metrics = {};
             }
 
