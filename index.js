@@ -8,15 +8,30 @@ var mod_restify = require('restify-clients');
 var mod_extsprintf = require('extsprintf');
 var mod_vasync = require('vasync');
 
+/* Unit statics */
+var CONTAINER = 'Container';
+var CPU = 'CPU';
+var CPU_PCT = CPU + ' %';
+var DRAM = 'DRAM';
 var GB = 'GB';
+var LOAD_AVG = 'Load Avg';
 var MB = 'MB';
-var MBps = 'MBps';
+var MBps = ' MBps';
+var PCT = '%';
+var SWAP = 'Swap';
+var ZFS = 'ZFS';
+
+var Egress_MBps = 'Egress' + MBps;
+var Ingress_MBps = 'Ingress' + MBps;
+
+/* Endpoint statics */
 var HTTPS = 'https://';
 var PORT = ':9163';
-var PCT = '%';
 var METRICS = '/metrics';
 var DISCO = '/v1/discover';
-var FETCH_INTERVAL_MS = 10 * 1000; /* 1000ms per second */
+
+/* Calculation statics */
+var FETCH_INTERVAL_MS = 11 * 1000; /* 1000ms per second */
 var REFRESH_INTERVAL_MS = 300 * 1000; /* 1000ms per second */
 var NANO_SEC_PERIOD = 10000000000; /* Nano seconds in 10 sec peroid */
 
@@ -48,6 +63,12 @@ var options = [
         type: 'string',
         help: 'key file path',
         helpArg: 'KEY'
+    },
+    {
+        names: ['cpus'],
+        type: 'number',
+        help: 'optional number of CPUs to assume',
+        helpArg: 'CPUS'
     }
 ];
 
@@ -81,18 +102,20 @@ if (opts.help) {
     _showHelp();
 }
 
-function bytesToMB(bytes_val, precision) {
-    mod_assert.number(bytes_val, 'bytes_val');
-    mod_assert.number(precision, 'precision');
-
-    return (bytes_val / 1000) / 1000).toFixed(precision);
+function bytesToMB(bytes_val) {
+    return ((bytes_val / 1000) / 1000);
 }
 
-function bytesToGB(bytes_val, precision) {
-    mod_assert.number(bytes_val, 'bytes_val');
-    mod_assert.number(precision, 'precision');
+function bytesToGB(bytes_val) {
+    return (((bytes_val / 1000) / 1000) / 1000);
+}
 
-    return (((bytes_val / 1000) / 1000) / 1000).toFixed(precision);
+function fractionStr(val_one, val_two, unit) {
+    if (!unit) {
+        return mod_extsprintf.sprintf('%s/%s', val_one, val_two);
+    }
+
+    return mod_extsprintf.sprintf('%s/%s %s', val_one, val_two, unit);
 }
 
 function paint() {
@@ -123,7 +146,7 @@ function paint() {
         mod_assert.ifError(p_err);
     });
 
-    setTimeout(paint, 11000);
+    setTimeout(paint, FETCH_INTERVAL_MS);
 }
 
 function draw() {
@@ -180,53 +203,53 @@ function draw() {
         /* Total Memory Calculation */
         var mu_inst = stats.mem_use;
         var ml_inst = stats.mem_lim;
-        mem_used += (((mu_inst / 1000) / 1000) / 1000);
-        mem_limit += (((ml_inst / 1000) / 1000) / 1000);
+        mem_used += bytesToGB(mu_inst);
+        mem_limit += bytesToGB(ml_inst);
 
         /* Total Swap Calculation */
         var su_inst = stats.swp_use;
         var sl_inst = stats.swp_lim;
-        swap_used += (((su_inst / 1000) / 1000) / 1000);
-        swap_limit += (((sl_inst / 1000) / 1000) / 1000);
+        swap_used += bytesToGB(su_inst);
+        swap_limit += bytesToGB(sl_inst);
         
         /* Total Swap Calculation */
         var zu_inst = stats.zfs_use;
         var za_inst = stats.zfs_av;
-        zfs_used += (((zu_inst / 1000) / 1000) / 1000);
-        zfs_avail += (((za_inst / 1000) / 1000) / 1000);
+        zfs_used += bytesToGB(zu_inst);
+        zfs_avail += bytesToGB(za_inst);
 
 
         /* Total CPU % */
-        var cpu_usr_ttl = parseInt(stats.cpu_usr);
-        var cpu_usr_old_ttl = parseInt(stats.cpu_usr_old);
-        var cpu_usr_inc_ttl = (cpu_usr_ttl - cpu_usr_old_ttl);
-        var cpu_sys_ttl = parseInt(stats.cpu_sys);
-        var cpu_sys_old_ttl = parseInt(stats.cpu_sys_old);
-        var cpu_sys_inc_ttl = (cpu_sys_ttl - cpu_sys_old_ttl);
-        cpu_pct += ((cpu_sys_inc_ttl + cpu_usr_inc_ttl) / 10000000000) * 100;
+        var cpu_usr_tl = parseInt(stats.cpu_usr);
+        var cpu_usr_old_tl = parseInt(stats.cpu_usr_old);
+        var cpu_usr_inc_tl = (cpu_usr_tl - cpu_usr_old_tl);
+        var cpu_sys_tl = parseInt(stats.cpu_sys);
+        var cpu_sys_old_tl = parseInt(stats.cpu_sys_old);
+        var cpu_sys_inc_tl = (cpu_sys_tl - cpu_sys_old_tl);
+        cpu_pct += ((cpu_sys_inc_tl + cpu_usr_inc_tl) / NANO_SEC_PERIOD) * 100;
 
         /* Ingress Network Bytes */
         var netb_in = parseInt(stats.netb_in);
         var netb_in_old = parseInt(stats.netb_in_old);
         var net_in_diff = netb_in - netb_in_old;
-        var net_in_mb = ((net_in_diff / 1000) / 1000);
+        var net_in_mb = bytesToMB(net_in_diff);
         net_in_mb_per_sec += (net_in_mb / 10);
 
         /* Egress Network Bytes */
         var netb_out = parseInt(stats.netb_out);
         var netb_out_old = parseInt(stats.netb_out_old);
         var net_out_diff = netb_out - netb_out_old;
-        var net_out_mb = ((net_out_diff / 1000) / 1000);
+        var net_out_mb = bytesToMB(net_out_diff);
         net_out_mb_per_sec += (net_out_mb / 10);
     }
 
-    var GB = ' GB';
     var blank_line = new line().fill();
 
     /* Memory Totals Output */
     var mem_danger = mem_limit * 0.8;
-    var mem_lim_human = mem_limit.toFixed(2) + GB
-    var mem_human = mem_used.toFixed(2) + ' / ' + mem_lim_human;
+    var mem_lim_human = mem_limit.toFixed(2);
+    var mem_used_human = mem_used.toFixed(2);
+    var mem_human = fractionStr(mem_used_human, mem_lim_human, GB);
     var mem_gauge = gauge(
         mem_used,
         mem_limit,
@@ -236,7 +259,7 @@ function draw() {
 
     var mem_line = new line();
     mem_line.padding(2);
-    mem_line.column('DRAM', 20, [mod_clc.cyan]);
+    mem_line.column(DRAM, 20, [mod_clc.cyan]);
     mem_line.column(mem_gauge);
     mem_line.fill();
     mem_line.output();
@@ -244,7 +267,7 @@ function draw() {
     /* Swap Totals Output */
     var swap_danger = swap_limit * 0.8;
     var swap_lim_human = swap_limit.toFixed(2) + GB;
-    var swap_human = swap_used.toFixed(2) + ' / ' + swap_lim_human;
+    var swap_human = fractionStr(swap_used.toFixed(2), swap_lim_human);
     var swap_gauge = gauge(
         swap_used,
         swap_limit,
@@ -254,7 +277,7 @@ function draw() {
 
     var swap_line = new line();
     swap_line.padding(2);
-    swap_line.column('Swap', 20, [mod_clc.cyan]);
+    swap_line.column(SWAP, 20, [mod_clc.cyan]);
     swap_line.column(swap_gauge);
     swap_line.fill();
     swap_line.output();
@@ -263,7 +286,7 @@ function draw() {
     var zfs_limit = (zfs_used + zfs_avail).toFixed(2);
     var zfs_lim_human = zfs_limit + GB;
     var zfs_danger = zfs_limit * 0.8;
-    var zfs_human = zfs_used.toFixed(2) + ' / ' + zfs_lim_human;
+    var zfs_human = fractionStr(zfs_used.toFixed(2), zfs_lim_human);
     var zfs_gauge = gauge(
         zfs_used,
         zfs_limit,
@@ -273,25 +296,27 @@ function draw() {
 
     var zfs_line = new line();
     zfs_line.padding(2);
-    zfs_line.column('ZFS', 20, [mod_clc.cyan]);
+    zfs_line.column(ZFS, 20, [mod_clc.cyan]);
     zfs_line.column(zfs_gauge);
     zfs_line.fill();
     zfs_line.output();
 
-    /* CPU % Totals Output */
-    var cpu_gauge = gauge(
-        cpu_pct.toFixed(0),
-        400,
-        20,
-        400 * 0.8,
-        cpu_pct.toFixed(0) + ' %');
+    if (opts.cpus) {
+        /* CPU % Totals Output */
+        var cpu_gauge = gauge(
+            cpu_pct.toFixed(0),
+            opts.cpus * 100,
+            20,
+            (opts.cpus * 100) * 0.8,
+            mod_extsprintf.sprintf('%s %s', cpu_pct.toFixed(0), PCT));
 
-    var cpu_line = new line();
-    cpu_line.padding(2);
-    cpu_line.column('CPU', 20, [mod_clc.cyan]);
-    cpu_line.column(cpu_gauge);
-    cpu_line.fill();
-    cpu_line.output();
+        var cpu_line = new line();
+        cpu_line.padding(2);
+        cpu_line.column(CPU, 20, [mod_clc.cyan]);
+        cpu_line.column(cpu_gauge);
+        cpu_line.fill();
+        cpu_line.output();
+    }
 
     blank_line.output();
 
@@ -300,8 +325,8 @@ function draw() {
     ingressNet.shift();
     var netb_in_line = new line();
     netb_in_line.padding(2);
-    netb_in_line.column('Ingress MBps', 20, [mod_clc.cyan]);
-    netb_in_line.column(spark(ingressNet, ' MBps'), 80);
+    netb_in_line.column(Ingress_MBps, 20, [mod_clc.cyan]);
+    netb_in_line.column(spark(ingressNet, MBps), 80);
     netb_in_line.fill();
     netb_in_line.output();
 
@@ -310,8 +335,8 @@ function draw() {
     egressNet.shift();
     var netb_out_line = new line();
     netb_out_line.padding(2);
-    netb_out_line.column('Egress MBps', 20, [mod_clc.cyan]);
-    netb_out_line.column(spark(egressNet, ' MBps'), 80);
+    netb_out_line.column(Egress_MBps, 20, [mod_clc.cyan]);
+    netb_out_line.column(spark(egressNet, MBps), 80);
     netb_out_line.fill();
     netb_out_line.output();
 
@@ -320,12 +345,12 @@ function draw() {
     /* Individual Zone Column Headers */
     var zone_col_names = new line();
     zone_col_names.padding(2);
-    zone_col_names.column('Container', 15, [mod_clc.cyan]);
-    zone_col_names.column('DRAM', 10, [mod_clc.cyan]);
-    zone_col_names.column('Swap', 15, [mod_clc.cyan]);
-    zone_col_names.column('ZFS', 10, [mod_clc.cyan]);
-    zone_col_names.column('Load Avg', 10, [mod_clc.cyan]);
-    zone_col_names.column('CPU %', 10, [mod_clc.cyan]);
+    zone_col_names.column(CONTAINER, 15, [mod_clc.cyan]);
+    zone_col_names.column(DRAM, 10, [mod_clc.cyan]);
+    zone_col_names.column(SWAP, 15, [mod_clc.cyan]);
+    zone_col_names.column(ZFS, 10, [mod_clc.cyan]);
+    zone_col_names.column(LOAD_AVG, 10, [mod_clc.cyan]);
+    zone_col_names.column(CPU_PCT, 10, [mod_clc.cyan]);
     zone_col_names.fill();
     zone_col_names.output();
 
@@ -337,33 +362,33 @@ function draw() {
 
         /* Mem usage */
         var mem_use = stats.mem_use;
-        var mem_use_human = (((mem_use / 1000) / 1000) / 1000);
+        var mem_use_human = bytesToGB(mem_use);
         var mem_use_human = mem_use_human.toFixed(1);
         var mem_lim = stats.mem_lim;
-        var mem_lim_human = (((mem_lim / 1000) / 1000) / 1000);
+        var mem_lim_human = bytesToGB(mem_lim);
         var mem_lim_human = mem_lim_human.toFixed(1);
         var mem_use_pct = ((mem_use * 100) / mem_lim).toFixed(1);
-        var mem_col = mem_use_pct + '%';
+        var mem_col = mod_extsprintf.sprintf('%s %s', mem_use_pct, '%');
         zone_line.column(mem_col, 10, [mod_clc.white]);
 
         /* Swap usage */
         var swp_use = stats.swp_use;
-        var swp_use_human = (((swp_use / 1000) / 1000));
+        var swp_use_human = bytesToMB(swp_use);
         var swp_use_human = swp_use_human.toFixed(0);
         var swp_lim = stats.swp_lim;
-        var swp_lim_human = (((swp_lim / 1000) / 1000));
+        var swp_lim_human = bytesToMB(swp_lim);
         var swp_lim_human = swp_lim_human.toFixed(0);
-        var swp_col = swp_use_human + '/' + swp_lim_human + ' MB';
+        var swp_col = fractionStr(swp_use_human, swp_lim_human, MB);
         zone_line.column(swp_col, 15, [mod_clc.white]);
 
         /* ZFS usage */
         var zfs_use = stats.zfs_use;
-        var zfs_use_human = ((zfs_use / 1000) / 1000) / 1000;
+        var zfs_use_human = bytesToGB(zfs_use);
         var zfs_use_human = zfs_use_human.toFixed(0);
         var zfs_lim = parseInt(stats.zfs_av) + parseInt(zfs_use);
-        var zfs_lim_human = ((zfs_lim / 1000) / 1000) / 1000;
+        var zfs_lim_human = bytesToGB(zfs_lim);
         var zfs_lim_human = zfs_lim_human.toFixed(0);
-        var zfs_col = zfs_use_human + '/' + zfs_lim_human + ' GB';
+        var zfs_col = fractionStr(zfs_use_human, zfs_lim_human, GB);
         zone_line.column(zfs_col, 10, [mod_clc.white]);
 
         /* Load Average */
@@ -416,8 +441,11 @@ function fetchAllMetrics(cb) {
     mod_vasync.forEachPipeline({
         'inputs': Object.keys(targets),
         'func': function fetchMetrics(key, next) {
+            var id = targets[key].vm_uuid;
+            var ept = opts.endpoint;
+            var url = mod_extsprintf.sprintf('%s%s.%s%s', HTTPS, id, ept, PORT);
             var str_client = mod_restify.createStringClient({
-                url: HTTPS + targets[key].vm_uuid + '.' + opts.endpoint + PORT,
+                url: url,
                 rejectUnauthorized: false,
                 cert: mod_fs.readFileSync(opts.cert),
                 key: mod_fs.readFileSync(opts.key)
