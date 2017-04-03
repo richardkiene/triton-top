@@ -31,7 +31,7 @@ var METRICS = '/metrics';
 var DISCO = '/v1/discover';
 
 /* Calculation statics */
-var FETCH_INTERVAL_MS = 11 * 1000; /* 1000ms per second */
+var FETCH_INTERVAL_MS = 10 * 1000; /* 1000ms per second */
 var REFRESH_INTERVAL_MS = 300 * 1000; /* 1000ms per second */
 var NANO_SEC_PERIOD = 10000000000; /* Nano seconds in 10 sec peroid */
 
